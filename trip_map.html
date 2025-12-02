@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Trip Tracking</title>
+
+    <!-- MapLibre for MapTiler maps -->
+    <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+
+    <style>
+        /* Minimal global fixes to avoid the black bar when going fullscreen */
+        
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #1e1e2f;
+            color: #fff;
+            text-align: center;
+        }
+        
+        h1 {
+            margin: 20px 0 5px;
+            color: #9a7dff;
+        }
+        
+        #modeDisplay {
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            color: #ddd;
+        }
+        
+        .search-container {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin: 10px auto;
+            width: 80%;
+            position: relative;
+            z-index: 6;
+        }
+        
+        #searchBox {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+        }
+        
+        #micBtn {
+            background: #9a7dff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        /* Ensure map fills properly and avoids layout gaps */
+        
+        #map {
+            width: 100%;
+            height: 65vh;
+            min-height: 0;
+            /* important for some browsers to avoid unexpected extra space */
+            border: 2px solid #2f58cd;
+            border-radius: 10px;
+            margin-top: 10px;
+            position: relative;
+            transition: all 0.25s ease-in-out;
+            box-sizing: border-box;
+            background: #e5e7eb;
+            /* fallback while tiles load */
+        }
+        /* fullscreen fallback styling (if Fullscreen API not supported) */
+        
+        #map.fullscreen {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            z-index: 999;
+        }
+        
+        .hide-in-nav {
+            display: none !important;
+        }
+        
+        .controls {
+            margin: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+        
+        .controls.fullscreen-overlay {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 18px;
+            z-index: 1001;
+            margin: 0;
+            background: rgba(0, 0, 0, 0.22);
+            padding: 10px 12px;
+            border-radius: 10px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        #startBtn {
+            background: #28a745;
+            color: white;
+        }
+        
+        #stopBtn {
+            background: #dc3545;
+            color: white;
+        }
+        
+        #status {
+            margin-top: 12px;
+            font-size: 1.05em;
+            color: #9a7dff;
+        }
+        
+        #coordsDebug {
+            font-size: 0.9em;
+            color: #cfcfcf;
+            margin-top: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        #suggestions {
+            background: white;
+            color: black;
+            position: absolute;
+            width: 70%;
+            left: 15%;
+            top: 140px;
+            border-radius: 5px;
+            max-height: 220px;
+            overflow-y: auto;
+            display: none;
+            text-align: left;
+            z-index: 9;
+        }
+        
+        #suggestions div {
+            padding: 10px;
+            cursor: pointer;
+        }
+        
+        #suggestions div:hover {
+            background: #f0f0f0;
+        }
+        
+        @media (max-width: 520px) {
+            #searchBox {
+                font-size: 14px;
+                padding: 10px;
+            }
+            button {
+                padding: 10px 16px;
+                font-size: 15px;
+            }
+        }
+        
+        #tripOverlay {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 14px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 5000 !important;
+            /* force above map & controls */
+            text-align: left;
+            display: none;
+            min-width: 220px;
+        }
+        
+        #tripOverlay .mini {
+            font-size: 12px;
+            color: #ddd;
+            margin-top: 6px;
+        }
+        
+        #tripOverlay button {
+            margin-top: 8px;
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: none;
+            background: #dc3545;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        /* small style for the moving/rotating marker element */
+        
+        .moving-marker {
+            width: 40px;
+            height: 40px;
+            transform-origin: center center;
+            transition: transform 300ms linear;
+            will-change: transform;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 id="titleHeader">Trip Tracking</h1>
+    <p id="modeDisplay">Selected Mode: Not selected</p>
+
+    <div class="search-container" id="searchContainer">
+        <input id="searchBox" placeholder="🔍 Search destination..." />
+        <button id="micBtn">🎤</button>
+    </div>
+    <div id="suggestions"></div>
+
+    <div id="map"></div>
+
+    <div class="controls" id="controlsContainer">
+        <button id="startBtn" onclick="startTrip()">Start Trip</button>
+        <button id="stopBtn" onclick="stopTrip()" disabled>Stop Trip</button>
+    </div>
+
+    <div id="tripOverlay">
+        <div id="overlayTimes">Start: - <br> End: -</div>
+        <div class="mini" id="overlayCoords">Lat: - , Lng: -</div>
+        <button id="overlayStopBtn" onclick="stopTrip()">Stop Trip</button>
+    </div>
+
+    <p id="status"></p>
+    <div id="coordsDebug"></div>
+
+    <script>
+        /* ========== CONFIG ========== */
+        const maptilerKey = "U19YwFxpXrGoPaUrIL98"; // <- your MapTiler key
+        const orsKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY4ZDI1OTdlYzQ5MDQ1ZmFiODc3YTg4NDlhM2RjMjkwIiwiaCI6Im11cm11cjY0In0="; // <- your ORS key
+        const backendUrl = "http://localhost:3000"; // backend server (keep as you use)
+        /* ============================ */
+
+        let map, userMarkerEl, userMarker, destinationMarker;
+        let initialFixReceived = false;
+        let watchIdForTrip = null;
+        let pathCoords = [];
+        let routeCoordsFromORS = [];
+        let currentDistancePopup = null;
+        // Trip state flag
+        let tripStarted = false;
+
+        const selectedMode = (localStorage.getItem("selectedMode") || "Not selected").toLowerCase();
+        document.getElementById("modeDisplay").innerText = "Selected Mode: " + (selectedMode || "Not selected");
+
+        /* ====== Mode icons (match the values you set in trip_mode.html: walk, cycle, bike, car, bus, auto) ====== */
+        const modeIcons = {
+            walk: "https://img.icons8.com/color/48/walking.png",
+            cycle: "https://img.icons8.com/color/48/bicycle.png",
+            bike: "https://img.icons8.com/color/48/motorbike.png",
+            car: "https://img.icons8.com/color/48/car.png",
+            bus: "https://img.icons8.com/ios-filled/60/2F58CD/bus.png", // using the blue filled bus-style icon as requested for consistent style
+            auto: "https://img.icons8.com/ios-filled/60/2F58CD/auto-rickshaw.png"
+        };
+
+        function showCoordsDebug(lat, lng, accuracy) {
+            const el = document.getElementById("coordsDebug");
+            const overlayCoords = document.getElementById("overlayCoords");
+
+            if (!lat) {
+                el.innerText = "";
+                overlayCoords.innerText = "Lat: - , Lng: -";
+                return;
+            }
+
+            el.innerText = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)} — accuracy: ${accuracy ? accuracy + "m" : "n/a"}`;
+
+            // 🔥 keep overlay synced
+            overlayCoords.innerText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+        }
+
+
+        /* ====== New: default blue marker and mode-marker creators ====== */
+        function createDefaultMarker(lng, lat) {
+            // remove previous marker if any
+            if (userMarker) {
+                try {
+                    userMarker.remove();
+                } catch (e) {}
+                userMarker = null;
+                userMarkerEl = null;
+            }
+            userMarker = new maplibregl.Marker({
+                    color: "blue"
+                })
+                .setLngLat([lng, lat])
+                .addTo(map);
+        }
+
+        function createModeMarker(lng, lat) {
+            if (userMarker) {
+                try {
+                    userMarker.remove();
+                } catch (e) {}
+            }
+            userMarkerEl = document.createElement("img");
+            // use the chosen icon (keeps a consistent color/style for the app)
+            userMarkerEl.src = modeIcons[selectedMode] || modeIcons["car"];
+            userMarkerEl.className = "moving-marker";
+            userMarkerEl.style.pointerEvents = "none";
+            userMarker = new maplibregl.Marker({
+                element: userMarkerEl,
+                anchor: "center"
+            }).setLngLat([lng, lat]).addTo(map);
+        }
+
+        /* Create or update map marker for user - chooses default vs mode icon depending on tripStarted */
+        function createOrUpdateUserMarker(lng, lat) {
+            if (tripStarted) {
+                createModeMarker(lng, lat);
+            } else {
+                createDefaultMarker(lng, lat);
+            }
+        }
+
+        /* compute bearing between two coords in degrees (clockwise from north) */
+        function computeBearing(lon1, lat1, lon2, lat2) {
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const y = Math.sin(Δλ) * Math.cos(φ2);
+            const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+            let θ = Math.atan2(y, x);
+            let bearing = (θ * 180 / Math.PI + 360) % 360;
+            return bearing;
+        }
+
+        /* rotate marker element and move camera into bearing (navigation feel) */
+        function updateMarkerRotationAndCamera(prev, curr) {
+            if (!prev || !curr) return;
+            const [lng1, lat1] = prev;
+            const [lng2, lat2] = curr;
+            const bearing = computeBearing(lng1, lat1, lng2, lat2);
+            // rotate marker DOM (only works when marker element is an actual DOM image)
+            if (userMarkerEl && userMarkerEl.style) userMarkerEl.style.transform = `rotate(${bearing}deg)`;
+            // ease camera to current + set bearing & pitch for nav feeling
+            try {
+                map.easeTo({
+                    center: [lng2, lat2],
+                    bearing: bearing,
+                    pitch: 60,
+                    zoom: Math.max(15, map.getZoom()),
+                    duration: 800
+                });
+            } catch (e) {
+                // some browsers/maps may throw; ignore gracefully
+                map.setCenter([lng2, lat2]);
+            }
+        }
+
+        function initMap() {
+            map = new maplibregl.Map({
+                container: "map",
+                style: `https://api.maptiler.com/maps/streets/style.json?key=${maptilerKey}`,
+                center: [78.9629, 20.5937],
+                zoom: 5
+            });
+
+            map.on('load', () => {
+                // add sources/layers if not there (keep your previous route/livePath logic)
+                if (!map.getSource('livePath')) {
+                    map.addSource('livePath', {
+                        type: 'geojson',
+                        data: {
+                            type: "Feature",
+                            geometry: {
+                                type: "LineString",
+                                coordinates: []
+                            }
+                        }
+                    });
+                    map.addLayer({
+                        id: 'livePathLine',
+                        type: 'line',
+                        source: 'livePath',
+                        paint: {
+                            'line-color': '#2F58CD',
+                            'line-width': 4
+                        }
+                    });
+                }
+                if (!map.getSource('route')) {
+                    map.addSource('route', {
+                        type: 'geojson',
+                        data: {
+                            type: "Feature",
+                            geometry: {
+                                type: "LineString",
+                                coordinates: []
+                            }
+                        }
+                    });
+                    // routeLine color changed to rubbish red (#DC3545) per your request
+                    map.addLayer({
+                        id: 'routeLine',
+                        type: 'line',
+                        source: 'route',
+                        paint: {
+                            'line-color': '#DC3545',
+                            'line-width': 4
+                        }
+                    });
+                }
+                requestInitialPosition();
+            });
+        }
+
+        function requestInitialPosition() {
+            if (!navigator.geolocation) {
+                alert('Geolocation not supported by this browser.');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const lat = pos.coords.latitude,
+                    lng = pos.coords.longitude;
+                // now create a marker according to tripStarted (initially false -> default blue)
+                createOrUpdateUserMarker(lng, lat);
+                map.setCenter([lng, lat]);
+                map.setZoom(15);
+                showCoordsDebug(lat, lng, pos.coords.accuracy);
+                initialFixReceived = true;
+            }, (err) => {
+                console.warn('getCurrentPosition error:', err);
+            }, {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            });
+        }
+
+        function updateLivePathLayer() {
+            if (!map || !map.getSource('livePath')) return;
+            map.getSource('livePath').setData({
+                type: "Feature",
+                geometry: {
+                    type: "LineString",
+                    coordinates: pathCoords
+                }
+            });
+        }
+
+        function startPositionWatchForTrip() {
+            if (!navigator.geolocation) {
+                alert('Geolocation not supported');
+                return;
+            }
+            pathCoords = [];
+            updateLivePathLayer();
+
+            // start watching
+            watchIdForTrip = navigator.geolocation.watchPosition((pos) => {
+                const lat = pos.coords.latitude,
+                    lng = pos.coords.longitude,
+                    acc = pos.coords.accuracy;
+                // store [lng,lat]
+                pathCoords.push([lng, lat]);
+
+                // create or update user marker (uses mode icon if tripStarted is true)
+                createOrUpdateUserMarker(lng, lat);
+                showCoordsDebug(lat, lng, acc);
+
+                // if we have at least two points, compute bearing & rotate marker
+                if (pathCoords.length >= 2) {
+                    const prev = pathCoords[pathCoords.length - 2];
+                    const curr = pathCoords[pathCoords.length - 1];
+                    updateMarkerRotationAndCamera(prev, curr);
+                } else {
+                    // center map on first point
+                    try {
+                        map.easeTo({
+                            center: [lng, lat],
+                            zoom: 17,
+                            pitch: 60,
+                            duration: 500
+                        });
+                    } catch (e) {}
+                }
+
+                // update live path layer
+                updateLivePathLayer();
+            }, (err) => {
+                console.error('watchPosition error:', err);
+                if (err && err.code === 1) alert('Location permission denied. Enable location for this site.');
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            });
+        }
+
+        function stopPositionWatchForTrip() {
+            if (watchIdForTrip !== null) {
+                navigator.geolocation.clearWatch(watchIdForTrip);
+                watchIdForTrip = null;
+            }
+        }
+
+        /* ========== Autocomplete (MapTiler) ========== */
+        document.getElementById('searchBox').addEventListener('input', async(e) => {
+            const q = e.target.value.trim();
+            const suggestions = document.getElementById('suggestions');
+            suggestions.innerHTML = '';
+            if (q.length < 3) {
+                suggestions.style.display = 'none';
+                return;
+            }
+            try {
+                const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${maptilerKey}&limit=6`;
+                const r = await fetch(url);
+                const j = await r.json();
+                if (!j.features || !j.features.length) {
+                    suggestions.style.display = 'none';
+                    return;
+                }
+                j.features.forEach(f => {
+                    const name = f.place_name || (f.properties && f.properties.name) || 'Unknown';
+                    const div = document.createElement('div');
+                    div.textContent = name;
+                    div.onclick = () => {
+                        document.getElementById('searchBox').value = name;
+                        suggestions.style.display = 'none';
+                        const dest = f.geometry.coordinates; // [lng, lat]
+                        if (destinationMarker) destinationMarker.remove();
+                        destinationMarker = new maplibregl.Marker({
+                            color: 'red'
+                        }).setLngLat(dest).addTo(map);
+                        const start = userMarker ? userMarker.getLngLat().toArray() : [78.9629, 20.5937];
+                        getRoute(start, dest);
+                    };
+                    suggestions.appendChild(div);
+                });
+                suggestions.style.display = j.features.length ? 'block' : 'none';
+            } catch (err) {
+                console.error('geocode error', err);
+                document.getElementById('suggestions').style.display = 'none';
+            }
+        });
+
+        /* haversine helper (meters) */
+        function haversineMeters(coords) {
+            if (!coords || coords.length < 2) return 0;
+            const R = 6371000;
+            let total = 0;
+            for (let i = 1; i < coords.length; i++) {
+                const [lon1, lat1] = coords[i - 1];
+                const [lon2, lat2] = coords[i];
+                const φ1 = lat1 * Math.PI / 180;
+                const φ2 = lat2 * Math.PI / 180;
+                const Δφ = (lat2 - lat1) * Math.PI / 180;
+                const Δλ = (lon2 - lon1) * Math.PI / 180;
+                const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                total += R * c;
+            }
+            return total;
+        }
+
+        /* ORS routing + distance popup (unchanged logic) */
+        async function getRoute(start, end) {
+            try {
+                if (currentDistancePopup) {
+                    try {
+                        currentDistancePopup.remove();
+                    } catch (e) {}
+                    currentDistancePopup = null;
+                }
+                const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsKey}&start=${start[0]},${start[1]}&end=${end[0]},${end[1]}`;
+                const r = await fetch(url);
+                const j = await r.json();
+                if (!j.features || !j.features.length) {
+                    alert('Routing failed');
+                    console.error('ORS response', j);
+                    return;
+                }
+                const feat = j.features[0];
+                routeCoordsFromORS = feat.geometry && feat.geometry.coordinates ? feat.geometry.coordinates : [];
+                let distanceMeters = null;
+                if (feat.properties && feat.properties.summary && typeof feat.properties.summary.distance === 'number') distanceMeters = feat.properties.summary.distance;
+                if ((distanceMeters === null || !isFinite(distanceMeters)) && feat.properties && Array.isArray(feat.properties.segments)) distanceMeters = feat.properties.segments.reduce((s, seg) => s + (seg.distance || 0), 0);
+                if ((distanceMeters === null || !isFinite(distanceMeters)) && routeCoordsFromORS && routeCoordsFromORS.length > 1) distanceMeters = haversineMeters(routeCoordsFromORS);
+                if (!isFinite(distanceMeters) || distanceMeters === null) {
+                    console.warn('Could not determine distance from ORS response', feat);
+                    alert('Could not determine route distance.');
+                    return;
+                }
+                const distanceKm = (distanceMeters / 1000).toFixed(2);
+
+                if (map.getSource('route')) {
+                    map.getSource('route').setData({
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: routeCoordsFromORS
+                        }
+                    });
+                } else {
+                    map.addSource('route', {
+                        type: 'geojson',
+                        data: {
+                            type: 'Feature',
+                            geometry: {
+                                type: 'LineString',
+                                coordinates: routeCoordsFromORS
+                            }
+                        }
+                    });
+                    map.addLayer({
+                        id: 'routeLine',
+                        type: 'line',
+                        source: 'route',
+                        paint: {
+                            'line-color': '#DC3545',
+                            'line-width': 4
+                        }
+                    });
+                }
+
+                const midIndex = Math.floor(routeCoordsFromORS.length / 2) || 0;
+                const midPoint = routeCoordsFromORS[midIndex] || end;
+
+                currentDistancePopup = new maplibregl.Popup({
+                    closeOnClick: false,
+                    closeButton: false
+                }).setLngLat(midPoint).setHTML(`<div style="font-weight:700;color:#111;background:#fff;padding:6px 10px;border-radius:6px;">${distanceKm} km</div>`).addTo(map);
+
+                try {
+                    map.fitBounds([start, end], {
+                        padding: 50
+                    });
+                } catch (e) {
+                    console.warn('fitBounds failed', e);
+                }
+            } catch (err) {
+                console.error('getRoute error', err);
+                alert('Error calling routing service (see console).');
+            }
+        }
+
+        /* Fullscreen helpers (only minimal targeted changes here) */
+        async function enterFullscreenForMap() {
+            const mapEl = document.getElementById('map');
+
+            // ensure overlay is visible immediately (so user sees info before fullscreen finalizes)
+            try {
+                document.getElementById('tripOverlay').style.display = 'block';
+            } catch (e) {}
+
+            // store previous inline styles (so we can restore them on exit)
+            try {
+                mapEl.dataset.prevBorder = mapEl.style.border || "";
+                mapEl.dataset.prevBorderRadius = mapEl.style.borderRadius || "";
+                mapEl.dataset.prevHeight = mapEl.style.height || "";
+                mapEl.dataset.prevPosition = mapEl.style.position || "";
+                mapEl.dataset.prevTop = mapEl.style.top || "";
+                mapEl.dataset.prevLeft = mapEl.style.left || "";
+                mapEl.dataset.prevWidth = mapEl.style.width || "";
+            } catch (e) {}
+
+            // try to request fullscreen on the map element (user gesture required)
+            try {
+                if (mapEl.requestFullscreen) {
+                    await mapEl.requestFullscreen();
+                } else if (mapEl.webkitRequestFullscreen) {
+                    await mapEl.webkitRequestFullscreen();
+                } else {
+                    mapEl.classList.add('fullscreen');
+                }
+            } catch (e) {
+                // fallback to CSS fullscreen if requestFullscreen fails
+                mapEl.classList.add('fullscreen');
+            }
+
+            // Force map element inline styles while fullscreen to avoid visual gaps
+            try {
+                // make sure map covers the entire viewport to avoid any black bars
+                mapEl.style.position = "fixed";
+                mapEl.style.top = "0";
+                mapEl.style.left = "0";
+                mapEl.style.width = "100vw";
+                mapEl.style.height = "100vh";
+                mapEl.style.border = "0";
+                mapEl.style.borderRadius = "0";
+                mapEl.style.zIndex = "999";
+                // hide page scrollbars to avoid black bars / scroll area showing
+                document.documentElement.style.overflow = "hidden";
+                document.body.style.overflow = "hidden";
+            } catch (e) {}
+
+            // hide other UI pieces for navigation look
+            document.getElementById('titleHeader').classList.add('hide-in-nav');
+            document.getElementById('modeDisplay').classList.add('hide-in-nav');
+            document.getElementById('searchContainer').classList.add('hide-in-nav');
+            document.getElementById('suggestions').classList.add('hide-in-nav');
+
+            // show trip overlay top-left and make controls overlay
+            document.getElementById('tripOverlay').style.display = 'block';
+            document.getElementById('controlsContainer').classList.add('fullscreen-overlay');
+
+            // resize map after a short delay to ensure it fills the viewport
+            setTimeout(() => {
+                try {
+                    map.resize();
+                } catch (e) {
+                    console.warn('map.resize error', e);
+                }
+            }, 300);
+        }
+
+        async function exitFullscreenForMap() {
+            const mapEl = document.getElementById('map');
+            try {
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    if (document.exitFullscreen) await document.exitFullscreen();
+                    else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+                }
+            } catch (e) {
+                // ignore
+            }
+
+            // restore inline styles we changed
+            try {
+                mapEl.style.border = mapEl.dataset.prevBorder || "";
+                mapEl.style.borderRadius = mapEl.dataset.prevBorderRadius || "";
+                mapEl.style.height = mapEl.dataset.prevHeight || "";
+                mapEl.style.position = mapEl.dataset.prevPosition || "";
+                mapEl.style.top = mapEl.dataset.prevTop || "";
+                mapEl.style.left = mapEl.dataset.prevLeft || "";
+                mapEl.style.width = mapEl.dataset.prevWidth || "";
+                document.documentElement.style.overflow = "";
+                document.body.style.overflow = "";
+            } catch (e) {}
+
+            // remove fallback CSS if applied
+            mapEl.classList.remove('fullscreen');
+
+            // restore UI
+            document.getElementById('titleHeader').classList.remove('hide-in-nav');
+            document.getElementById('modeDisplay').classList.remove('hide-in-nav');
+            document.getElementById('searchContainer').classList.remove('hide-in-nav');
+            document.getElementById('suggestions').classList.remove('hide-in-nav');
+
+            // hide overlay & restore controls style
+            document.getElementById('tripOverlay').style.display = 'none';
+            document.getElementById('controlsContainer').classList.remove('fullscreen-overlay');
+
+            setTimeout(() => {
+                try {
+                    map.resize();
+                } catch (e) {
+                    console.warn('map.resize error', e);
+                }
+            }, 250);
+        }
+
+        // if user presses ESC or leaves fullscreen, keep UI consistent
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                const mapEl = document.getElementById('map');
+                mapEl.classList.remove('fullscreen');
+                // make sure any inline fullscreen styles are removed if user exited
+                try {
+                    // restore overflow
+                    document.documentElement.style.overflow = "";
+                    document.body.style.overflow = "";
+                    // reset any inline positioning left by fullscreen
+                    mapEl.style.position = mapEl.dataset.prevPosition || "";
+                    mapEl.style.top = mapEl.dataset.prevTop || "";
+                    mapEl.style.left = mapEl.dataset.prevLeft || "";
+                    mapEl.style.width = mapEl.dataset.prevWidth || "";
+                    mapEl.style.height = mapEl.dataset.prevHeight || "";
+                    mapEl.style.border = mapEl.dataset.prevBorder || "";
+                    mapEl.style.borderRadius = mapEl.dataset.prevBorderRadius || "";
+                } catch (e) {}
+                document.getElementById('titleHeader').classList.remove('hide-in-nav');
+                document.getElementById('modeDisplay').classList.remove('hide-in-nav');
+                document.getElementById('searchContainer').classList.remove('hide-in-nav');
+                document.getElementById('suggestions').classList.remove('hide-in-nav');
+                document.getElementById('tripOverlay').style.display = 'none';
+                document.getElementById('controlsContainer').classList.remove('fullscreen-overlay');
+                try {
+                    map.resize();
+                } catch (e) {}
+            }
+        });
+
+        /* Trip controls */
+        let tripStartTime = null;
+
+        async function startTrip() {
+            if (!initialFixReceived) requestInitialPosition();
+
+            tripStarted = true; // <-- set trip started BEFORE recreating marker
+            document.getElementById('tripOverlay').style.display = 'block';
+
+            tripStartTime = new Date();
+            document.getElementById('status').innerText = `🚀 Trip started at ${tripStartTime.toLocaleTimeString()}`;
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+
+            // update overlay start time & coords BEFORE entering fullscreen
+            document.getElementById('overlayTimes').innerHTML = `Start: ${tripStartTime.toLocaleTimeString()} <br> End: -`;
+            // copy current coords debug into overlay coords so the overlay shows the pre-start info
+            try {
+                const coordsText = document.getElementById('coordsDebug').innerText;
+                if (coordsText && coordsText.trim().length > 0) {
+                    // coordsText like: "Lat: x, Lng: y — accuracy: zm"
+                    document.getElementById('overlayCoords').innerText = coordsText.split('—')[0].trim();
+                } else {
+                    // fallback to default if coords not available yet
+                    document.getElementById('overlayCoords').innerText = "Lat: - , Lng: -";
+                }
+            } catch (e) {}
+
+            // ensure overlay visible before fullscreen starts (helps UX)
+            try {
+                document.getElementById('tripOverlay').style.display = 'block';
+            } catch (e) {}
+
+            // Request fullscreen and update UI, then start GPS watch
+            await enterFullscreenForMap();
+
+            // if we already have marker, re-create it so icon is correct for mode
+            if (userMarker) {
+                const pos = userMarker.getLngLat();
+                userMarker.remove();
+                userMarker = null;
+                createOrUpdateUserMarker(pos.lng, pos.lat);
+            }
+
+            // ensure camera zooms to current & provide nav style pitch
+            if (userMarker) {
+                const p = userMarker.getLngLat();
+                try {
+                    map.easeTo({
+                        center: [p.lng, p.lat],
+                        zoom: 17,
+                        pitch: 60,
+                        duration: 400
+                    });
+                } catch (e) {}
+            }
+
+            startPositionWatchForTrip();
+        }
+
+        async function stopTrip() {
+            if (!tripStartTime) {
+                alert('Trip not started');
+                return;
+            }
+            const tripEndTime = new Date();
+            const durationSeconds = Math.round((tripEndTime - tripStartTime) / 1000);
+
+            stopPositionWatchForTrip();
+
+            // exit fullscreen and restore UI
+            await exitFullscreenForMap();
+
+            document.getElementById('status').innerText =
+                `🛑 Trip ended at ${tripEndTime.toLocaleTimeString()} (Duration: ${durationSeconds}s)`;
+            document.getElementById('overlayTimes').innerHTML = `Start: ${tripStartTime.toLocaleTimeString()} <br> End: ${tripEndTime.toLocaleTimeString()}`;
+
+            // reset tripStarted so next trip shows default marker
+            tripStarted = false;
+            // replace marker with default blue marker at last known position (if available)
+            try {
+                if (userMarker) {
+                    const pos = userMarker.getLngLat();
+                    createDefaultMarker(pos.lng, pos.lat);
+                }
+            } catch (e) {}
+
+            // prepare payload for backend (unchanged)
+            const payload = {
+                userId: localStorage.getItem('userId'),
+                mode: selectedMode,
+                startTime: tripStartTime.toISOString(),
+                endTime: tripEndTime.toISOString(),
+                duration: durationSeconds,
+                path: pathCoords.length ? pathCoords : routeCoordsFromORS
+            };
+
+            if (!payload.userId) {
+                alert('No logged-in user found. Trip will not be saved.');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${backendUrl}/api/trip`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const j = await res.json();
+                if (res.ok) {
+                    alert('✅ Trip saved successfully');
+                    pathCoords = [];
+                    routeCoordsFromORS = [];
+                    updateLivePathLayer();
+                    document.getElementById('stopBtn').disabled = true;
+                    document.getElementById('startBtn').disabled = false;
+                } else {
+                    alert('Failed to save trip: ' + (j.message || 'server error'));
+                    console.error('trip save error', j);
+                }
+            } catch (err) {
+                console.error('Error saving trip', err);
+                alert('Server error while saving trip (see console).');
+            }
+        }
+
+        /* Mic (voice) support (unchanged) */
+        document.getElementById('micBtn').addEventListener('click', () => {
+            if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+                alert('Speech recognition not supported in this browser');
+                return;
+            }
+            const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const rec = new Recognition();
+            rec.lang = 'en-US';
+            rec.start();
+            rec.onresult = (ev) => {
+                const text = ev.results[0][0].transcript;
+                document.getElementById('searchBox').value = text;
+                document.getElementById('searchBox').dispatchEvent(new Event('input'));
+            };
+        });
+
+        window.onload = initMap;
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,137 @@
+body,
+html {
+    margin: 0;
+    padding: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    height: 100%;
+    width: 100%;
+}
+
+.background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    background: url('image44.jpg') no-repeat center center/cover;
+}
+
+.content-wrapper {
+    position: relative;
+    z-index: 2;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.form-glass {
+    min-width: 350px;
+    max-width: 400px;
+    width: 100%;
+    margin: 0 40px;
+    background: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.13);
+    backdrop-filter: blur(13px);
+    -webkit-backdrop-filter: blur(13px);
+    border-radius: 20px;
+    padding: 40px 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.form-box {
+    width: 100%;
+    background: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+.form-box h2 {
+    color: hsl(346, 100%, 20%);
+    margin-bottom: 18px;
+    font-weight: 600;
+}
+
+.form-box p,
+.form-box a {
+    color: hsl(346, 100%, 20%);
+    font-size: 0.94rem;
+}
+
+.form-box a {
+    color: #c8a9ff;
+    text-decoration: underline;
+}
+
+input {
+    width: 100%;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    border-radius: 7px;
+    border: none;
+    outline: none;
+    background: rgba(255, 255, 255, 0.47);
+    color: #222;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+
+button {
+    width: 100%;
+    padding: 13px;
+    background: #8d70ff;
+    border: none;
+    color: #fff;
+    font-weight: bold;
+    font-size: 1rem;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+button:hover {
+    background: #6841d3;
+}
+
+.hidden {
+    display: none;
+}
+
+.side-text {
+    flex: 1;
+    margin-left: 40px;
+    color: #fff;
+    text-shadow: 1px 1px 12px #1a191969;
+    background: rgba(0, 0, 0, 0.08);
+    padding: 30px 0;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    height: 250px;
+    min-width: 320px;
+}
+
+.side-text h1 {
+    font-size: 2rem;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    font-family: 'Montserrat', Arial, sans-serif;
+    margin: 0;
+    line-height: 1.25;
+}
+
+@media (max-width: 900px) {
+    .content-wrapper {
+        flex-direction: column;
+    }
+    .side-text {
+        margin: 30px 0 0 0;
+        min-width: 200px;
+        height: auto;
+    }
+}
